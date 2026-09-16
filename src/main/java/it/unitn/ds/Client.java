@@ -3,7 +3,10 @@ package it.unitn.ds;
 import akka.actor.ActorRef;
 import akka.actor.Props;
 
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
+import akka.actor.Cancellable;
 
 public class Client extends AbstractClient {
 
@@ -20,20 +23,58 @@ public class Client extends AbstractClient {
         return Props.create(Client.class, () -> new Client(readTimeoutDelay, writeTimeoutDelay, defaultTargetReplica, Optional.ofNullable(listener)));
     }
 
+    // ASSUMPTION: NO MORE THAN ONE REQUEST IN FLIGHT
+    private Cancellable currentTimeout = null;
+
     @Override
     public void sendRead(ActorRef replica, int index) {
-        // TODO: implement        
+        // Send Request to Replica
+        replica.tell(new Replica.ReadRequestMessage(index), getSelf());
+        // Schedule Read Timeout
+        currentTimeout = getContext().system().scheduler().scheduleOnce(
+            Duration.of(getReadTimeoutDelay(), ChronoUnit.MILLIS),
+            getSelf(),
+            new ReadTimeout(getSelf(), replica, index),
+            getContext().system().dispatcher(),
+            getSelf()
+        );
     }
 
     @Override
     public void sendWrite(ActorRef replica, int index, int value) {
-        // TODO: implement
+        // Send Request to Replica
+        replica.tell(new Replica.WriteRequestMessage(index, value), getSelf());
+        // Schedule Write Timeout
+        currentTimeout = getContext().system().scheduler().scheduleOnce(
+            Duration.of(getWriteTimeoutDelay(), ChronoUnit.MILLIS),
+            getSelf(),
+            new WriteTimeout(getSelf(), replica, index, value),
+            getContext().system().dispatcher(),
+            getSelf()
+        );
+    }
+
+    public void onReadReply(Replica.ReadReply msg) {
+        // Cancel the scheduled timeout message
+        currentTimeout.cancel();
+        // Call callback
+        callbackOnReadResult(new ReadResult(true, msg.index, msg.value, msg.replicaId));
+    }
+
+    public void onWriteReply(Replica.WriteReply msg) {
+        // Cancel the scheduled timeout message
+        currentTimeout.cancel();
+        // Call callback
+        callbackOnWriteResult(new WriteResult(true, msg.index, msg.value, msg.replicaId));
     }
 
     @Override
     public final Receive createReceive() {
         return createBaseReceiveBuilder()
-                // TODO add your message handlers here .match(, )
+                .match(ReadTimeout.class, this::callbackOnReadTimeout)
+                .match(WriteTimeout.class, this::callbackOnWriteTimeout)
+                .match(Replica.ReadReply.class, this::onReadReply)
+                .match(Replica.WriteReply.class, this::onWriteReply)
                 .build();
     }
 
