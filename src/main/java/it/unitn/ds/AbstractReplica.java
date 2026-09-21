@@ -89,6 +89,8 @@ public abstract class AbstractReplica extends AbstractActor {
         return maxLatency + (int)((float)maxLatency/2.0 * getSystemNumberOfActors());
     }
 
+    public int getId(){ return id;}
+
     // =================================================================================
     // Network Emulation
     // =================================================================================
@@ -301,9 +303,13 @@ public abstract class AbstractReplica extends AbstractActor {
         public final int replicaId;
         public final int crashedCoordinatorId;
 
+        // Data structure to hold information about the election, for now mapping replica id to update as string
+        public final Map<Integer,String> updates;
+
         public ElectionStarted(int replicaId, int crashedCoordinatorId) {
             this.replicaId = replicaId;
             this.crashedCoordinatorId = crashedCoordinatorId;
+            this.updates = new HashMap<>();
         }
 
         @Override

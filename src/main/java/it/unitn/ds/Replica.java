@@ -5,13 +5,23 @@ import akka.actor.Props;
 import akka.japi.Pair;
 
 import java.io.Serializable;
+import java.util.Map;
 import java.util.Optional;
 
 public class Replica extends AbstractReplica {
 
-  private Pair<ActorRef,Integer> coordinator = new Pair<>;
+  public Replica(int id) {
+    this(id, AbstractReplica.MIN_LATENCY, AbstractReplica.MAX_LATENCY, AbstractReplica.COORDINATOR_BEAT_INTERVAL,
+        Optional.empty());
+  }
 
-    // States in which a node can be, useful later for changing behavior
+  // Defining variables that will be populated on InitSystem
+  // Not final because its this replica view of the system and need to be modified during elections
+  private Map<Integer, ActorRef> group;
+  private int coordinator_id;
+
+
+  // States in which a node can be, useful later for changing behavior
   private AbstractReplica.Receive working;
   private AbstractReplica.Receive coordinating;
   private AbstractReplica.Receive electing;
@@ -22,15 +32,13 @@ public class Replica extends AbstractReplica {
     WORKING, COORDINATING, ELECTING, CRASHED
   }
 
+
   // For now on startup assume we are working
   // TODO: Check if this is the case, probably not (actor zero starts as
   // coordinator)
+  // HOW TF DO I GET MY OWN ID FFS AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  if ( getId == coordinator_id)
   private State actorState = State.WORKING;
-
-  public Replica(int id) {
-    this(id, AbstractReplica.MIN_LATENCY, AbstractReplica.MAX_LATENCY, AbstractReplica.COORDINATOR_BEAT_INTERVAL,
-        Optional.empty());
-  }
 
   public Replica(int id, int minLatency, int maxLatency, int coordinatorBeatInterval, Optional<ActorRef> listener) {
     super(id, minLatency, maxLatency, coordinatorBeatInterval, listener);
@@ -54,7 +62,7 @@ public class Replica extends AbstractReplica {
   }
 
   // Functions that implement the logic when receiving specific type of message
-  // These are called by public Replica when building the recieive builder
+  // These are called by public Replica when building the receive builder
   private void receiveElectionStarted(ElectionStarted msg){
         // Receiving this message means someone detected coordinator crash and started an election
         // Just need to change state to electing (?) and wait for the election process
@@ -66,13 +74,13 @@ public class Replica extends AbstractReplica {
             getContext().become(electing);
 
             // Add this actor's update to the map and send msg to the next node in the circle
-            msg.updates.put(id, ); // TODO: add current update
+            msg.updates.put(id, this.); // TODO: add current update WE DO NOT HAVE REPLICA DATA YET
             do{
                 tell(msg,);
             }while()
         }
         else if (actorState == State.ELECTING){
-            // This branch means that the election has finished and we should send the coordinator elected message
+            // This branch means that the election has finished, and we should send the coordinator elected message
         }
         else{
             System.err.println("Error: This branch should never be triggered");
@@ -109,8 +117,8 @@ public class Replica extends AbstractReplica {
 
   @Override
   public int getSystemNumberOfActors() {
-    // TODO: implement
-    return 0;
+    // TODO: is this enough? prob not
+    return this.group.size();
   }
 
   @Override
@@ -120,7 +128,9 @@ public class Replica extends AbstractReplica {
 
   @Override
   public void initSystem(InitSystem sysInit) {
-    // TODO: implement
+    // TODO: did i do this right?
+    this.group = sysInit.group;
+    this.coordinator_id = sysInit.coordinator_id;
   }
 
   @Override
