@@ -19,7 +19,8 @@ public class Replica extends AbstractReplica {
   // Not final because its this replica view of the system and need to be modified during elections
   private Map<Integer, ActorRef> group;
   private int coordinator_id;
-
+  private State actorState = State.WORKING;
+  private Crash.Type nextCrashingMsg = null;
 
   // States in which a node can be, useful later for changing behavior
   private AbstractReplica.Receive working;
@@ -32,32 +33,24 @@ public class Replica extends AbstractReplica {
     WORKING, COORDINATING, ELECTING, CRASHED
   }
 
-
-  // For now on startup assume we are working
-  // TODO: Check if this is the case, probably not (actor zero starts as
-  // coordinator)
-  // HOW TF DO I GET MY OWN ID FFS AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-  if ( getId == coordinator_id)
-  private State actorState = State.WORKING;
-
   public Replica(int id, int minLatency, int maxLatency, int coordinatorBeatInterval, Optional<ActorRef> listener) {
     super(id, minLatency, maxLatency, coordinatorBeatInterval, listener);
     // TODO: implement
     // receiveBuilder is implemented so that nodes can behave like state machines
     // states are transitioned in createReceive with become
     // TODO: add all possible states and matching receive functions
+
     working = receiveBuilder()
         .match(ElectionStarted.class, this::receiveElectionStarted)
-        .match(Crash.class, this::receiveCrash)
         .build();
     coordinating = receiveBuilder()
-        .match(Crash.class, this::receiveCrash)
         .build();
     electing = receiveBuilder()
         .match(CoordinatorElected.class, this::receiveCoordinatorElected)
-        .match(Crash.class, this::receiveCrash)
         .build();
     crashed = receiveBuilder()
+        // Match everything and do nothing
+        .matchAny((msg)->{})
         .build();
   }
 
@@ -94,15 +87,6 @@ public class Replica extends AbstractReplica {
     // This can be only electing -> working or also electing -> coordinator ???
   }
 
-  private void receiveCrash(Crash crash_msg) {
-    if (crash_msg.type == Crash.Type.Now) {
-      // If crash now instantly transition to crashed state
-      // TODO: implement state transition
-    } else {
-      // idk tbh
-    }
-  }
-
   public static Props props(int id, int minLatency, int maxLatency, int coordinatorBeatInterval) {
     return Props.create(Replica.class,
         () -> new Replica(id, minLatency, maxLatency, coordinatorBeatInterval, Optional.empty()));
@@ -123,7 +107,14 @@ public class Replica extends AbstractReplica {
 
   @Override
   public void crash(AbstractReplica.Crash how_to_crash) {
-    // TODO: implement
+
+
+    if (how_to_crash.type == Crash.Type.Now)
+        getContext().become(crashed);
+    else
+        //if not crashing now store in variable the type of crash to use in behavior
+        nextCrashingMsg = how_to_crash.type;
+
   }
 
   @Override
@@ -131,7 +122,16 @@ public class Replica extends AbstractReplica {
     // TODO: did i do this right?
     this.group = sysInit.group;
     this.coordinator_id = sysInit.coordinator_id;
+
+    // Decide initial state (either working or coordinating)
+    if ( id == coordinator_id)
+      actorState = State.COORDINATING;
+      //TODO set a timer that sends heartbeats
+    else{
+      //TODO set a timer, if do not recieve heartbeat for a while go start elections
+    }
   }
+
 
   @Override
   public final Receive createReceive() {
@@ -186,4 +186,17 @@ public class Replica extends AbstractReplica {
       this.value = value;
     }
   }
+
+  public static class Heartbeat implements Serializable{
+    public final int coordId;
+
+    public Heartbeat(int coordId) {
+      this.coordId = coordId;
+    }
+  }
+
+  public void onHeartbeat(Heartbeat msg){
+    // non fa un cazzo probabilmente (per ora)
+  }
+
 }
