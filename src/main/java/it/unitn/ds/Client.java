@@ -29,7 +29,7 @@ public class Client extends AbstractClient {
     @Override
     public void sendRead(ActorRef replica, int index) {
         // Send Request to Replica
-        replica.tell(new ReplicaMessage.ReadRequestMessage(index), getSelf());
+        replica.tell(new ReplicaMessage.ReadRequest(index), getSelf());
         // Schedule Read Timeout
         currentTimeout = getContext().system().scheduler().scheduleOnce(
             Duration.of(getReadTimeoutDelay(), ChronoUnit.MILLIS),
@@ -43,7 +43,7 @@ public class Client extends AbstractClient {
     @Override
     public void sendWrite(ActorRef replica, int index, int value) {
         // Send Request to Replica
-        replica.tell(new ReplicaMessage.WriteRequestMessage(index, value), getSelf());
+        replica.tell(new ReplicaMessage.WriteRequest(index, value), getSelf());
         // Schedule Write Timeout
         currentTimeout = getContext().system().scheduler().scheduleOnce(
             Duration.of(getWriteTimeoutDelay(), ChronoUnit.MILLIS),
