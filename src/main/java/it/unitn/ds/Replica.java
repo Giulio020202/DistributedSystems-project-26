@@ -90,7 +90,8 @@ public class Replica extends AbstractReplica {
   }
 
   private void transitionState(State newState) {
-    actorState.stateStop();
+    if(actorState != null)
+      actorState.stateStop();
     actorState = newState;
     actorState.stateStart();
   }
