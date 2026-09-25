@@ -29,7 +29,7 @@ public class Client extends AbstractClient {
     @Override
     public void sendRead(ActorRef replica, int index) {
         // Send Request to Replica
-        replica.tell(new Replica.ReadRequestMessage(index), getSelf());
+        replica.tell(new ReplicaMessage.ReadRequestMessage(index), getSelf());
         // Schedule Read Timeout
         currentTimeout = getContext().system().scheduler().scheduleOnce(
             Duration.of(getReadTimeoutDelay(), ChronoUnit.MILLIS),
@@ -43,7 +43,7 @@ public class Client extends AbstractClient {
     @Override
     public void sendWrite(ActorRef replica, int index, int value) {
         // Send Request to Replica
-        replica.tell(new Replica.WriteRequestMessage(index, value), getSelf());
+        replica.tell(new ReplicaMessage.WriteRequestMessage(index, value), getSelf());
         // Schedule Write Timeout
         currentTimeout = getContext().system().scheduler().scheduleOnce(
             Duration.of(getWriteTimeoutDelay(), ChronoUnit.MILLIS),
@@ -54,14 +54,14 @@ public class Client extends AbstractClient {
         );
     }
 
-    public void onReadReply(Replica.ReadReply msg) {
+    public void onReadReply(ReplicaMessage.ReadReply msg) {
         // Cancel the scheduled timeout message
         currentTimeout.cancel();
         // Call callback
         callbackOnReadResult(new ReadResult(true, msg.index, msg.value, msg.replicaId));
     }
 
-    public void onWriteReply(Replica.WriteReply msg) {
+    public void onWriteReply(ReplicaMessage.WriteReply msg) {
         // Cancel the scheduled timeout message
         currentTimeout.cancel();
         // Call callback
@@ -73,8 +73,8 @@ public class Client extends AbstractClient {
         return createBaseReceiveBuilder()
                 .match(ReadTimeout.class, this::callbackOnReadTimeout)
                 .match(WriteTimeout.class, this::callbackOnWriteTimeout)
-                .match(Replica.ReadReply.class, this::onReadReply)
-                .match(Replica.WriteReply.class, this::onWriteReply)
+                .match(ReplicaMessage.ReadReply.class, this::onReadReply)
+                .match(ReplicaMessage.WriteReply.class, this::onWriteReply)
                 .build();
     }
 

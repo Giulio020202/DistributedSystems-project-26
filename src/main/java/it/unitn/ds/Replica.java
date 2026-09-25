@@ -153,49 +153,7 @@ public class Replica extends AbstractReplica {
     }
   }
 
-  public static class ReadReply implements Serializable {
-    public final int replicaId;
-    public final int index;
-    public final int value;
-
-    public ReadReply(int replicaId, int index, int value) {
-      this.replicaId = replicaId;
-      this.index = index;
-      this.value = value;
-    }
-  }
-
-  public static class WriteRequestMessage implements Serializable {
-    public final int index;
-    public final int value;
-
-    public WriteRequestMessage(int index, int value) {
-      this.index = index;
-      this.value = value;
-    }
-  }
-
-  public static class WriteReply implements Serializable {
-    public final int replicaId;
-    public final int index;
-    public final int value;
-
-    public WriteReply(int replicaId, int index, int value) {
-      this.replicaId = replicaId;
-      this.index = index;
-      this.value = value;
-    }
-  }
-
-  public static class Heartbeat implements Serializable{
-    public final int coordId;
-
-    public Heartbeat(int coordId) {
-      this.coordId = coordId;
-    }
-  }
-
-  public void onHeartbeat(Heartbeat msg){
+  public void onHeartbeat(ReplicaMessage.Heartbeat msg){
     // non fa un cazzo probabilmente (per ora)
   }
 
