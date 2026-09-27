@@ -21,7 +21,6 @@ public class Replica extends AbstractReplica {
   // Defining variables that will be populated on InitSystem
   // Not final because its this replica view of the system and need to be modified during elections
   private Map<Integer, ActorRef> group;
-  private int coordinator_id;
   private State actorState = null;
   private Crash.Type nextCrashingMsg = null;
 
@@ -86,17 +85,21 @@ public class Replica extends AbstractReplica {
 
   // Readonly because only the coordinator gets write requests, but they do write when coordinator says so
   class ReadOnlyReplica extends State {
-    //TODO: stateStart must set a timer, if do not recieve heartbeat for a while go start elections
+    private final int coordinator_id;
     private Cancellable hearbeat_timeout;
+
+    ReadOnlyReplica(int coordinator_id) {
+      this.coordinator_id = coordinator_id;
+    }
+
+    //TODO: stateStart must set a timer, if do not recieve heartbeat for a while go start elections
   }
 
   class Coordinator extends State {
-    //TODO: stateStart must set a timer that sends heartbeats
     private Cancellable heartbeat_timer;
 
     @Override
     void stateStart() {
-      coordinator_id = id;
       // Schedule first Hearbeat
       scheduleNextHeartbeat();
     }
@@ -247,13 +250,12 @@ public class Replica extends AbstractReplica {
   @Override
   public void initSystem(InitSystem sysInit) {
     this.group = sysInit.group;
-    this.coordinator_id = sysInit.coordinator_id;
 
     // Decide initial state (either working or coordinating)
-    if (id == coordinator_id){    // Coordinator id is initially decided and passed by Main
+    if (id == sysInit.coordinator_id){    // Coordinator id is initially decided and passed by Main
       transitionState(new Coordinator());
     } else {
-      transitionState(new ReadOnlyReplica());
+      transitionState(new ReadOnlyReplica(sysInit.coordinator_id));
     }
   }
 
