@@ -18,6 +18,7 @@ public class LogicalTimestamp implements Serializable, Comparable<LogicalTimesta
   public int compareTo(LogicalTimestamp rhs) {
     int epoch_comparison = this.epoch - rhs.epoch;
     if(epoch_comparison == 0)
+      // Remember this value is a comparison
       return this.sequence_number - rhs.sequence_number;
     else
       return epoch_comparison;

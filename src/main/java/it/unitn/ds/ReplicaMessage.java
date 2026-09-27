@@ -1,10 +1,10 @@
 package it.unitn.ds;
-import java.io.Serializable;
-import java.util.Collections;
-import java.util.Map;
-import java.util.HashMap;
+import org.w3c.dom.stylesheets.LinkStyle;
 
-public class ReplicaMessage implements Serializable {
+import java.io.Serializable;
+import java.util.*;
+
+public abstract class ReplicaMessage implements Serializable {
 
   public static class ReadRequest extends ReplicaMessage {
     public final int index;
@@ -57,6 +57,9 @@ public class ReplicaMessage implements Serializable {
       this.timestamp = timestamp;
       this.index = index;
       this.value = value;
+
+      // TODO: si può usare questo messaggio per fare piggybacking con la lista di nodi vivi
+      // si può usare UpdateAck per fare crash detection
     }
 
     public UpdateAck getAck() {
@@ -86,15 +89,34 @@ public class ReplicaMessage implements Serializable {
     public Election(Map<Integer, LogicalTimestamp> replica_to_timestamp) {
       this.replica_to_timestamp = Collections.unmodifiableMap(new HashMap<>(replica_to_timestamp));
     }
+
+    public CoordinatorAnnouncement toCoordinator(){
+      Map.Entry<Integer, LogicalTimestamp> coordinator_entry = null;
+
+      // Iterate over every Replica-Timestamp association and save the most recent (new coordinator)
+      for(var entry: replica_to_timestamp.entrySet()){
+        if (coordinator_entry == null)
+                coordinator_entry = entry;
+        else{
+          if(entry.getValue().compareTo(coordinator_entry.getValue()) > 0){
+            coordinator_entry = entry;
+          }
+        }
+      }
+
+      return new CoordinatorAnnouncement(coordinator_entry.getKey(),replica_to_timestamp.keySet());
+    }
   }
 
   public static class ElectionAck extends ReplicaMessage {}
 
   public static class CoordinatorAnnouncement extends ReplicaMessage {
     public final int new_coordinator_id;
+    public final SortedSet<Integer> live_group;
 
-    public CoordinatorAnnouncement(int new_coordinator_id){
+    public CoordinatorAnnouncement(int new_coordinator_id, Set<Integer> live_group){
       this.new_coordinator_id = new_coordinator_id;
+      this.live_group = Collections.unmodifiableSortedSet(new TreeSet<>(live_group));
     }
   }
 

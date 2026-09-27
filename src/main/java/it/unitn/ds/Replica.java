@@ -1,9 +1,13 @@
 package it.unitn.ds;
 
 import akka.actor.ActorRef;
+import akka.actor.Cancellable;
 import akka.actor.Props;
 import it.unitn.ds.ReplicaMessage.*;
 
+import java.io.Serializable;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.Optional;
 
@@ -23,7 +27,7 @@ public class Replica extends AbstractReplica {
 
   // Any state subclass implements an interface that is MOSTLY pure with respect to the Actor Context
   // Most Actor Context 
-  abstract class State {
+  abstract static class State {
     abstract void stateStart();
     abstract void stateStop();
     abstract void onReadRequest(ReplicaMessage.ReadRequest message);
@@ -35,6 +39,7 @@ public class Replica extends AbstractReplica {
     abstract void onCommitUpdate(ReplicaMessage.CommitUpdate message);
     abstract void onElection(ReplicaMessage.Election message);
     abstract void onElectionAck(ReplicaMessage.ElectionAck message);
+    abstract void onCoordinatorAnnouncement(ReplicaMessage.CoordinatorAnnouncement message);
     abstract void onSync(ReplicaMessage.Sync message);
     abstract void onHeartbeat(ReplicaMessage.Heartbeat message);
   }
@@ -72,18 +77,58 @@ public class Replica extends AbstractReplica {
     @Override
     void onElectionAck(ElectionAck message){}
     @Override
+    void onCoordinatorAnnouncement(CoordinatorAnnouncement message){}
+    @Override
     void onSync(Sync message){}
     @Override
     void onHeartbeat(Heartbeat message){}
   }
 
-  // Can a replica be read only?
+  // Readonly because only the coordinator gets write requests, but they do write when coordinator says so
   class ReadOnlyReplica extends State {
     //TODO: stateStart must set a timer, if do not recieve heartbeat for a while go start elections
+    private Cancellable hearbeat_timeout;
   }
 
   class Coordinator extends State {
     //TODO: stateStart must set a timer that sends heartbeats
+    private Cancellable heartbeat_timer;
+
+    @Override
+    void stateStart() {
+      coordinator_id = id;
+      // Schedule first Hearbeat
+      scheduleNextHeartbeat();
+    }
+
+    @Override
+    void stateStop() {
+      if(heartbeat_timer != null)
+        heartbeat_timer.cancel();
+    }
+
+    // Method for scheduling Heartbeats, sends to self a hearbeat message that gets processed by onHeartbeat
+    private void scheduleNextHeartbeat(){
+      heartbeat_timer =
+              getContext()
+              .getSystem()
+              .scheduler()
+              .scheduleOnce(
+                      Duration.of(getCoordinatorBeatInterval(), ChronoUnit.MILLIS),
+                      getSelf(),
+                      new ReplicaMessage.Heartbeat(coordinator_id),
+                      getContext().system().dispatcher(),
+                      getSelf()
+              );
+    }
+
+    // Method that actually sends the heartbeats to all replicas and then schedules next heartbeat.
+    // Didnt use scheduleWithFixedDelay to avoid possible queueing multiple heartbeats
+    @Override
+    void onHeartbeat(Heartbeat message){
+      broadcast(new ReplicaMessage.Heartbeat(coordinator_id));
+      scheduleNextHeartbeat();
+    }
   }
 
   // Transition to this state when detecting a coordinator crash OR when recieving elecionstarted message (??)
@@ -95,7 +140,7 @@ public class Replica extends AbstractReplica {
 
   // Helper function to temporarily pause the current state when transitioning
   private void transitionState(State newState) {
-    if(actorState != null)
+    if(actorState != null) // Initially all nodes actorState are initialized as null
       actorState.stateStop();
     actorState = newState;
     actorState.stateStart();
@@ -119,6 +164,9 @@ public class Replica extends AbstractReplica {
   
   void onUpdate(ReplicaMessage.Update message){
     actorState.onUpdate(message);
+
+    if(nextCrashingMsg == Crash.Type.Update)
+      transitionState(new Crashed());
   }
   
   void onUpdateAck(ReplicaMessage.UpdateAck message){
@@ -127,23 +175,46 @@ public class Replica extends AbstractReplica {
   
   void onCommitUpdate(ReplicaMessage.CommitUpdate message){
     actorState.onCommitUpdate(message);
+
+    if(nextCrashingMsg == Crash.Type.WriteOK)
+      transitionState(new Crashed());
   }
   
   void onElection(ReplicaMessage.Election message){
     actorState.onElection(message);
+
+    if(nextCrashingMsg == Crash.Type.Election)
+      transitionState(new Crashed());
   }
   
   void onElectionAck(ReplicaMessage.ElectionAck message){
     actorState.onElectionAck(message);
+
+    if(nextCrashingMsg == Crash.Type.Update)
+      transitionState(new Crashed());
+
+  }
+
+  void onCoordinatorAnnouncement(ReplicaMessage.CoordinatorAnnouncement message){
+    actorState.onCoordinatorAnnouncement(message);
+
+    if(nextCrashingMsg == Crash.Type.Update)
+      transitionState(new Crashed());
   }
   
   void onSync(ReplicaMessage.Sync message){
     actorState.onSync(message);
+
+    // Assuming that Synchronization is election-related (ends election)
+    if(nextCrashingMsg == Crash.Type.Update)
+      transitionState(new Crashed());
   }
   
   public void onHeartbeat(ReplicaMessage.Heartbeat msg){
     // non fa un cazzo probabilmente (per ora)
-    // actorState.onHeartbeat(msg);
+    actorState.onHeartbeat(msg);
+    if(nextCrashingMsg == Crash.Type.Heartbeat)
+      transitionState(new Crashed());
   }
 
   public static Props props(int id, int minLatency, int maxLatency, int coordinatorBeatInterval) {
@@ -158,10 +229,9 @@ public class Replica extends AbstractReplica {
         () -> new Replica(id, minLatency, maxLatency, coordinatorBeatInterval, Optional.ofNullable(listener)));
   }
 
-  // Getter for number of actors in the system. Crashed actors do not stop technically SO do they count for this method?
+  // Getter for number of live actors
   @Override
   public int getSystemNumberOfActors() {
-    //TODO: is this enough? prob not
     return this.group.size();
   }
 
@@ -187,6 +257,12 @@ public class Replica extends AbstractReplica {
     }
   }
 
+  void broadcast(Serializable message){
+    for(ActorRef actorRef: group.values()) {
+      tell(message, actorRef);
+    }
+  }
+
   @Override
   public final Receive createReceive() {
     return createBaseReceiveBuilder()
@@ -199,9 +275,9 @@ public class Replica extends AbstractReplica {
       .match(ReplicaMessage.CommitUpdate.class, this::onCommitUpdate)
       .match(ReplicaMessage.Election.class, this::onElection)
       .match(ReplicaMessage.ElectionAck.class, this::onElectionAck)
+      .match(ReplicaMessage.CoordinatorAnnouncement.class, this::onCoordinatorAnnouncement)
       .match(ReplicaMessage.Sync.class, this::onSync)
       .match(ReplicaMessage.Heartbeat.class, this::onHeartbeat)
       .build();
   }
-
 }
