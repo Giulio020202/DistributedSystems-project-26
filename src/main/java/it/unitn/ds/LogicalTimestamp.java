@@ -3,6 +3,7 @@ import java.io.Serializable;
 import java.lang.Comparable;
 import java.util.Objects;
 
+// Class needed to implement logical timestamps knowing communication is FIFO
 public class LogicalTimestamp implements Serializable, Comparable<LogicalTimestamp> {
   public final int epoch;
   public final int sequence_number;
@@ -11,7 +12,8 @@ public class LogicalTimestamp implements Serializable, Comparable<LogicalTimesta
     this.epoch = epoch;
     this.sequence_number = sequence_number;
   }
-  
+
+  // TODO: Ask about this
   @Override
   public int compareTo(LogicalTimestamp rhs) {
     int epoch_comparison = this.epoch - rhs.epoch;

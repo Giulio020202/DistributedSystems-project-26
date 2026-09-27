@@ -39,6 +39,8 @@ public class Replica extends AbstractReplica {
     abstract void onHeartbeat(ReplicaMessage.Heartbeat message);
   }
 
+  // Transition to this state when crashing condition is satisfied, start dropping all messages
+  // For our implementation Crash is the only state that needs .become
   class Crashed extends State {
     @Override 
     void stateStart(){
@@ -75,6 +77,7 @@ public class Replica extends AbstractReplica {
     void onHeartbeat(Heartbeat message){}
   }
 
+  // Can a replica be read only?
   class ReadOnlyReplica extends State {
     //TODO: stateStart must set a timer, if do not recieve heartbeat for a while go start elections
   }
@@ -83,12 +86,14 @@ public class Replica extends AbstractReplica {
     //TODO: stateStart must set a timer that sends heartbeats
   }
 
+  // Transition to this state when detecting a coordinator crash OR when recieving elecionstarted message (??)
   class Electing extends State {}
 
   public Replica(int id, int minLatency, int maxLatency, int coordinatorBeatInterval, Optional<ActorRef> listener) {
     super(id, minLatency, maxLatency, coordinatorBeatInterval, listener);
   }
 
+  // Helper function to temporarily pause the current state when transitioning
   private void transitionState(State newState) {
     if(actorState != null)
       actorState.stateStop();
@@ -141,39 +146,6 @@ public class Replica extends AbstractReplica {
     // actorState.onHeartbeat(msg);
   }
 
-  // Functions that implement the logic when receiving specific type of message
-  // These are called by public Replica when building the receive builder
-  private void receiveElectionStarted(ElectionStarted msg){
-        // Receiving this message means someone detected coordinator crash and started an election
-        // Just need to change state to electing (?) and wait for the election process
-        //TODO implement logic when election started
-        if (actorState == State.WORKING){
-            // This means it's the first time the actor receives a election started message
-            // Transition into electing
-            actorState =  State.ELECTING;
-            getContext().become(electing);
-
-            // Add this actor's update to the map and send msg to the next node in the circle
-            msg.updates.put(id, this.); // TODO: add current update WE DO NOT HAVE REPLICA DATA YET
-            do{
-                tell(msg,);
-            }while()
-        }
-        else if (actorState == State.ELECTING){
-            // This branch means that the election has finished, and we should send the coordinator elected message
-        }
-        else{
-            System.err.println("Error: This branch should never be triggered");
-            System.exit(1);
-        }
-    }
-
-  private void receiveCoordinatorElected(CoordinatorElected msg) {
-    // Receiving this message means coordinator has been elected so we can go back
-    // to working state
-    // This can be only electing -> working or also electing -> coordinator ???
-  }
-
   public static Props props(int id, int minLatency, int maxLatency, int coordinatorBeatInterval) {
     return Props.create(Replica.class,
         () -> new Replica(id, minLatency, maxLatency, coordinatorBeatInterval, Optional.empty()));
@@ -186,6 +158,7 @@ public class Replica extends AbstractReplica {
         () -> new Replica(id, minLatency, maxLatency, coordinatorBeatInterval, Optional.ofNullable(listener)));
   }
 
+  // Getter for number of actors in the system. Crashed actors do not stop technically SO do they count for this method?
   @Override
   public int getSystemNumberOfActors() {
     //TODO: is this enough? prob not
@@ -207,7 +180,7 @@ public class Replica extends AbstractReplica {
     this.coordinator_id = sysInit.coordinator_id;
 
     // Decide initial state (either working or coordinating)
-    if (id == coordinator_id){
+    if (id == coordinator_id){    // Coordinator id is initially decided and passed by Main
       transitionState(new Coordinator());
     } else {
       transitionState(new ReadOnlyReplica());
