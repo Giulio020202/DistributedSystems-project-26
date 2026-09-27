@@ -96,6 +96,8 @@ public class Replica extends AbstractReplica {
   }
 
   class Coordinator extends State {
+    private final ReplicaMessage.Heartbeat heartbeat_message = new Heartbeat(id);
+
     private Cancellable heartbeat_timer;
 
     @Override
@@ -119,7 +121,7 @@ public class Replica extends AbstractReplica {
               .scheduleOnce(
                       Duration.of(getCoordinatorBeatInterval(), ChronoUnit.MILLIS),
                       getSelf(),
-                      new ReplicaMessage.Heartbeat(coordinator_id),
+                      heartbeat_message,
                       getContext().system().dispatcher(),
                       getSelf()
               );
@@ -129,7 +131,7 @@ public class Replica extends AbstractReplica {
     // Didnt use scheduleWithFixedDelay to avoid possible queueing multiple heartbeats
     @Override
     void onHeartbeat(Heartbeat message){
-      broadcast(new ReplicaMessage.Heartbeat(coordinator_id));
+      broadcast(heartbeat_message);
       scheduleNextHeartbeat();
     }
   }
