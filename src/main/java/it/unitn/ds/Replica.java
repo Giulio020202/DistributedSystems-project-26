@@ -86,13 +86,59 @@ public class Replica extends AbstractReplica {
   // Readonly because only the coordinator gets write requests, but they do write when coordinator says so
   class ReadOnlyReplica extends State {
     private final int coordinator_id;
-    private Cancellable hearbeat_timeout;
+    private Cancellable heartbeat_timeout;
+
+    private final Serializable heartbeat_timeout_message = new Serializable(){};
 
     ReadOnlyReplica(int coordinator_id) {
       this.coordinator_id = coordinator_id;
     }
 
-    //TODO: stateStart must set a timer, if do not recieve heartbeat for a while go start elections
+    @Override
+    void stateStart() {
+      final Receive with_heartbeat_timeout_handler = receiveBuilder()
+        // Call onHeartbeatTimeout if message == heartbeat_timeout_message
+        // Since we always send the same object/instance, the == should be enough
+        .matchEquals(heartbeat_timeout_message, this::onHeartbeatTimeout)
+        .build();
+      getContext().become(createReceive().orElse(with_heartbeat_timeout_handler));
+
+      scheduleHeartbeatTimeout();
+    }
+
+    @Override
+    void stateStop() {
+      if(heartbeat_timeout != null)
+        heartbeat_timeout.cancel();
+
+      getContext().become(createReceive());
+    }
+
+    void scheduleHeartbeatTimeout() {
+      heartbeat_timeout =
+        getContext()
+        .getSystem()
+        .scheduler()
+        .scheduleOnce(
+                Duration.of(getCoordinatorBeatInterval(), ChronoUnit.MILLIS),
+                // Duration.of(getCoordinatorBeatInterval()*2, ChronoUnit.MILLIS),
+                getSelf(),
+                heartbeat_timeout_message,
+                getContext().system().dispatcher(),
+                getSelf()
+        );
+    }
+
+    @Override
+    void onHeartbeat(Heartbeat message) {
+      if(heartbeat_timeout != null)
+        heartbeat_timeout.cancel();
+      scheduleHeartbeatTimeout();
+    }
+
+    void onHeartbeatTimeout(Serializable message) {
+      //TODO: Trigger election
+    }
   }
 
   class Coordinator extends State {
