@@ -45,8 +45,8 @@ public class Replica extends AbstractReplica {
 
   // Transition to this state when crashing condition is satisfied, start dropping all messages
   // For our implementation Crash is the only state that needs .become
-  class Crashed extends State {
-    @Override 
+  final State crashedState = new State() {
+    @Override
     void stateStart(){
       final Receive crashedReceive = receiveBuilder()
         .matchAny(msg -> {})
@@ -81,7 +81,7 @@ public class Replica extends AbstractReplica {
     void onSync(Sync message){}
     @Override
     void onHeartbeat(Heartbeat message){}
-  }
+  };
 
   // Readonly because only the coordinator gets write requests, but they do write when coordinator says so
   class ReadOnlyReplica extends State {
@@ -171,7 +171,7 @@ public class Replica extends AbstractReplica {
     actorState.onUpdate(message);
 
     if(nextCrashingMsg == Crash.Type.Update)
-      transitionState(new Crashed());
+      transitionState(crashedState);
   }
   
   void onUpdateAck(ReplicaMessage.UpdateAck message){
@@ -182,21 +182,21 @@ public class Replica extends AbstractReplica {
     actorState.onCommitUpdate(message);
 
     if(nextCrashingMsg == Crash.Type.WriteOK)
-      transitionState(new Crashed());
+      transitionState(crashedState);
   }
   
   void onElection(ReplicaMessage.Election message){
     actorState.onElection(message);
 
     if(nextCrashingMsg == Crash.Type.Election)
-      transitionState(new Crashed());
+      transitionState(crashedState);
   }
   
   void onElectionAck(ReplicaMessage.ElectionAck message){
     actorState.onElectionAck(message);
 
     if(nextCrashingMsg == Crash.Type.Update)
-      transitionState(new Crashed());
+      transitionState(crashedState);
 
   }
 
@@ -204,7 +204,7 @@ public class Replica extends AbstractReplica {
     actorState.onCoordinatorAnnouncement(message);
 
     if(nextCrashingMsg == Crash.Type.Update)
-      transitionState(new Crashed());
+      transitionState(crashedState);
   }
   
   void onSync(ReplicaMessage.Sync message){
@@ -212,14 +212,14 @@ public class Replica extends AbstractReplica {
 
     // Assuming that Synchronization is election-related (ends election)
     if(nextCrashingMsg == Crash.Type.Update)
-      transitionState(new Crashed());
+      transitionState(crashedState);
   }
   
   public void onHeartbeat(ReplicaMessage.Heartbeat msg){
     // non fa un cazzo probabilmente (per ora)
     actorState.onHeartbeat(msg);
     if(nextCrashingMsg == Crash.Type.Heartbeat)
-      transitionState(new Crashed());
+      transitionState(crashedState);
   }
 
   public static Props props(int id, int minLatency, int maxLatency, int coordinatorBeatInterval) {
@@ -243,7 +243,7 @@ public class Replica extends AbstractReplica {
   @Override
   public void crash(AbstractReplica.Crash how_to_crash) {
     if (how_to_crash.type == Crash.Type.Now)
-      transitionState(new Crashed());
+      transitionState(crashedState);
     else
       //if not crashing now store in variable the type of crash to use in behavior
       nextCrashingMsg = how_to_crash.type;
