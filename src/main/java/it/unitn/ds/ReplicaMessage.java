@@ -1,6 +1,6 @@
 package it.unitn.ds;
-import org.w3c.dom.stylesheets.LinkStyle;
 
+import akka.actor.ActorRef;
 import java.io.Serializable;
 import java.util.*;
 
@@ -27,10 +27,12 @@ public abstract class ReplicaMessage implements Serializable {
   }
 
   public static class WriteRequest extends ReplicaMessage {
+    public final ActorRef sender;
     public final int index;
     public final int value;
 
-    public WriteRequest(int index, int value) {
+    public WriteRequest(ActorRef sender, int index, int value) {
+      this.sender = sender;
       this.index = index;
       this.value = value;
     }
@@ -57,13 +59,14 @@ public abstract class ReplicaMessage implements Serializable {
       this.timestamp = timestamp;
       this.index = index;
       this.value = value;
-
-      // TODO: si può usare questo messaggio per fare piggybacking con la lista di nodi vivi
-      // si può usare UpdateAck per fare crash detection
     }
 
-    public UpdateAck getAck() {
+    public UpdateAck toAck() {
       return new UpdateAck(timestamp);
+    }
+
+    public CommitUpdate toCommit() {
+      return new CommitUpdate(timestamp);
     }
   }
 
@@ -122,10 +125,12 @@ public abstract class ReplicaMessage implements Serializable {
 
   public static class Sync extends ReplicaMessage {
     public final int coordinator_id;
+    public final LogicalTimestamp timestamp;
     public final Map<Integer, Integer> database_state;
 
-    public Sync(int coordinator_id, Map<Integer, Integer> database_state) {
+    public Sync(int coordinator_id, LogicalTimestamp timestamp, Map<Integer, Integer> database_state) {
       this.coordinator_id = coordinator_id;
+      this.timestamp = timestamp;
       this.database_state = Collections.unmodifiableMap(new HashMap<>(database_state));
     }
   }

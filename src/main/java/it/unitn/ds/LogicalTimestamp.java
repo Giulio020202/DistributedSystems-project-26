@@ -5,15 +5,24 @@ import java.util.Objects;
 
 // Class needed to implement logical timestamps knowing communication is FIFO
 public class LogicalTimestamp implements Serializable, Comparable<LogicalTimestamp> {
+  public static LogicalTimestamp ZERO = new LogicalTimestamp(0, 0);
+    
   public final int epoch;
   public final int sequence_number;
 
-  public LogicalTimestamp(int epoch, int sequence_number) {
+  private LogicalTimestamp(int epoch, int sequence_number) {
     this.epoch = epoch;
     this.sequence_number = sequence_number;
   }
 
-  // TODO: Ask about this
+  public LogicalTimestamp increaseSequenceNumber() {
+    return new LogicalTimestamp(this.epoch, this.sequence_number+1);
+  }
+
+  public LogicalTimestamp increaseEpoch() {
+    return new LogicalTimestamp(this.epoch+1, 0);
+  }
+
   @Override
   public int compareTo(LogicalTimestamp rhs) {
     int epoch_comparison = this.epoch - rhs.epoch;
